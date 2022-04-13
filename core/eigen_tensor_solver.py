@@ -108,6 +108,84 @@ def orthogonal_newton_correction_method(
     return x, lbd, ctr, converge
 
 
+def get_xperp(x):
+    Q = 2.*(x[0] > 0) - 1
+    P = x[0]/Q
+    return np.concatenate(
+        [-Q*x[1:].reshape(1, -1),
+         np.eye(x.shape[0]-1)-1/(1+P)*x[1:][:, None]@x[1:][None, :]])
+
+
+def newton_form_rayleigh_chebyshev(
+        T, max_itr, delta, x_init=None, do_chebyshev=True):
+    """Newton form rayleigh
+    """
+    # get tensor dimensionality and order
+    n_vec = T.shape
+    m = len(n_vec)
+    n = T.shape[0]
+    R = 1
+    converge = False
+
+    # if not given as input, randomly initialize
+    if x_init is None:
+        x_init = np.random.randn(n)
+        x_init = x_init/norm(x_init)
+
+    # init lambda_(k) and x_(k)
+
+    x_k = x_init.copy()
+    if do_chebyshev:
+        T_x_m_3 = symmetric_tv_mode_product(T, x_k, m-3)
+        T_x_m_2 = np.tensordot(T_x_m_3, x_k, axes=1)
+    else:
+        T_x_m_2 = symmetric_tv_mode_product(T, x_k, m-2)
+    T_x_m_1 = T_x_m_2 @ x_k
+    lbd = x_k.T @ T_x_m_1
+    ctr = 0
+
+    while (R > delta) and (ctr < max_itr):
+        # compute T(I,I,x_k,...,x_k), T(I,x_k,...,x_k) and g(x_k)
+
+        Q = get_xperp(x_k)
+
+        # compute Hessian H(x_k)
+        H = (m-1)*T_x_m_2-lbd*np.eye(n)
+        QTH = Q.T@H@Q
+        y = -Q@solve(QTH, Q.T@(T_x_m_1-lbd * x_k))
+
+        if do_chebyshev and (norm(y) < 5e-2):
+            Rp_eta = y.T @ T_x_m_1 + (m-1) * x_k.T @ T_x_m_2 @ y -\
+                2*(x_k.T @ y) * lbd
+            L_x_lbd = - y * Rp_eta
+            L_x_x = (m-1) * (m-2) * np.tensordot(T_x_m_3, y, axes=1) @ y
+            T_a = Q@solve(QTH, Q.T@(2*L_x_lbd + L_x_x))
+            x_k_n = x_k + y - 0.5*T_a
+            x_k_n /= norm(x_k_n)
+        else:
+            x_k_n = (x_k + y) / norm(x_k + y)
+
+        #  update residual and lbd
+        R = norm(x_k-x_k_n)
+        x_k = x_k_n
+        if do_chebyshev:
+            T_x_m_3 = symmetric_tv_mode_product(T, x_k, m-3)
+            T_x_m_2 = np.tensordot(T_x_m_3, x_k, axes=1)
+        else:
+            T_x_m_2 = symmetric_tv_mode_product(T, x_k, m-2)
+        T_x_m_1 = T_x_m_2 @ x_k
+
+        lbd = np.sum(x_k * T_x_m_1)
+        ctr += 1
+    x = x_k
+    err = norm(symmetric_tv_mode_product(
+        T, x, m-1) - lbd * x)
+    if ctr < max_itr:
+        converge = True
+
+    return x, lbd, ctr, converge, err
+
+
 def schur_form_rayleigh(
         T, max_itr, delta, x_init=None):
     """Schur form rayleigh
