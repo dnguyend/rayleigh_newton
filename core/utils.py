@@ -163,3 +163,72 @@ def generate_symmetric_tensor(k, m):
                 A[tuple(current_idx)] = A[i_s]
                 # print('Doing %s' % str(current_idx))
     return A
+
+
+def generate_symmetric_tensor_from_poly(X, expr):
+    """Generating symmetric tensor size k,m from a vector of variables
+    X: sympy matrix vector of size (n)
+    expression. Homogenous polynomial in the variables, entries of X
+    for example: X = sp.Matrix([x1, x2, x3])
+    expr = x1**3 + x2**3 - x3**3
+    return the tensor evaluated to that expression
+    """
+    import sympy as sp
+    
+    k = X.shape[0]
+    m = sp.Poly(expr, tuple(X)).degree()
+
+    expr_list = sp.Poly(expr).coeffs()
+    expr_monom = sp.Poly(expr).monoms()
+    tot_terms = sum(X)**m
+
+    divs = sp.Poly(tot_terms).coeffs()
+    monom = sp.Poly(tot_terms).monoms()
+    coeffs = len(monom)*[0]
+
+    for jj in range(len(expr_monom)):
+        idx = monom.index(expr_monom[jj])
+        coeffs[idx] = expr_list[jj]
+
+    def count_i_s(i_s):
+        ret = k*[0]
+        for i in i_s:
+            ret[i] += 1
+        return ret
+    A = np.full(tuple(m*[k]), np.nan)
+    current_idx = np.zeros(m, dtype=int)
+    active_i = m - 1
+    A[tuple(current_idx)] = coeffs[0]/divs[0]
+    while True:
+        if current_idx[active_i] < k - 1:
+            current_idx[active_i] += 1
+            if np.isnan(A[tuple(current_idx)]):
+                i_s = tuple(sorted(current_idx))
+                if np.isnan(A[i_s]):
+                    cnt_i_s = tuple(count_i_s(i_s))
+                    fidx = monom.index(cnt_i_s)
+                    A[i_s] = coeffs[fidx] / divs[fidx]
+                    # print('Doing %s' % str(i_s))
+                A[tuple(current_idx)] = A[i_s]
+                # print('Doing %s' % str(current_idx))
+        elif active_i == 0:
+            break
+        else:
+            next_pos = np.where(current_idx[:active_i] < k-1)[0]
+            if next_pos.shape[0] == 0:
+                break
+            current_idx[next_pos[-1]] += 1
+            current_idx[next_pos[-1]+1:] = 0
+                        
+            active_i = m - 1
+            if np.isnan(A[tuple(current_idx)]):
+                i_s = tuple(sorted(current_idx))
+                if np.isnan(A[i_s]):
+                    cnt_i_s = tuple(count_i_s(i_s))
+                    fidx = monom.index(cnt_i_s)
+                    A[i_s] = coeffs[fidx] / divs[fidx]
+                    # A[i_s] = np.random.rand()
+                    # print('Doing %s' % str(i_s))
+                A[tuple(current_idx)] = A[i_s]
+                # print('Doing %s' % str(current_idx))
+    return A
