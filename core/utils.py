@@ -176,10 +176,11 @@ def generate_symmetric_tensor_from_poly(X, expr):
     import sympy as sp
     
     k = X.shape[0]
-    m = sp.Poly(expr, tuple(X)).degree()
 
     expr_list = sp.Poly(expr).coeffs()
     expr_monom = sp.Poly(expr).monoms()
+    
+    m = sum(expr_monom[0])
     tot_terms = sum(X)**m
 
     divs = sp.Poly(tot_terms).coeffs()

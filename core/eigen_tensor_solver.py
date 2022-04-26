@@ -550,33 +550,38 @@ def find_eig_cnt(all_eig):
     else:
         return first_nan[0]
 
-    
+
 def normalize_real_positive(lbd, x, m, tol):
     """ First try to make it to a real pair
     if not possible. If not then make lambda real
     return is_self_conj, is_real, new_lbd, new_x
     """
     u = (sqrt(x @ x)).conjugate()
-    is_self_conj = norm(x.conjugate() - u*u*x) < tol
+    # is_self_conj = norm(x.conjugate() - u*u*x) < tol
     new_x = x * u
-    if np.sum(new_x.imag) < tol:
+    is_real = norm(new_x.imag) < m*tol
+    if is_real:
+        if np.abs(lbd) < tol:
+            return True, True, lbd, new_x
         # try to flip. if u **(m-2) > 0 use it:
-        lbd_factor = u**(m-2)
+        lbd_factor = u**(m-2)        
         if np.abs(lbd_factor*lbd_factor - 1) < tol:
             lbd_factor = lbd_factor.real
             if lbd * lbd_factor > 0:
-                return is_self_conj, True, lbd * lbd_factor, new_x
+                return True, True, lbd * lbd_factor, new_x
             elif m % 2 == 1:
-                return is_self_conj, True, -lbd * lbd_factor, -new_x
+                return True, True, -lbd * lbd_factor, -new_x
             else:
-                return is_self_conj, True, lbd * lbd_factor, new_x
+                return True, True, lbd * lbd_factor, new_x
+
+    is_self_conj = np.abs((x@x).conjugate()**(m-2)-1) < tol                
     if lbd < 0:
         return is_self_conj, False, -lbd, x * exp(pi/(m-2)*1j)
     else:
         return is_self_conj, False, lbd, x
 
 
-def _insert_eigen(all_eig, x, lbd, eig_cnt, m, tol):
+def _insert_eigen(all_eig, x, lbd, eig_cnt, m, tol, disc):
     """
     force eigen values to be positive if possible
     if x is not similar to a vector in all_eig.x
@@ -592,26 +597,22 @@ def _insert_eigen(all_eig, x, lbd, eig_cnt, m, tol):
         good_x = [norm_x]
     else:
         good_x = [norm_x, norm_x.conjugate()]
+    nct = 0
+    for xx in good_x:
+        factors = all_eig.x[:eig_cnt+nct, :] @ xx.conjugate()
+        fidx = np.where(np.abs(factors ** (m-2) - 1) < disc)[0]
+        if fidx.shape[0] == 0:
+            all_eig.lbd[eig_cnt+nct] = norm_lbd
+            all_eig.x[eig_cnt+nct] = xx
+            all_eig.is_self_conj[eig_cnt+nct] = is_self_conj
+            all_eig.is_real[eig_cnt+nct] = is_real
+            nct += 1
 
-    factors = all_eig.x[:eig_cnt, :] @ norm_x.conjugate()
-    fidx = np.where(np.abs(factors ** (m-2) - 1) < tol)[0]
-    if fidx.shape[0]:
-        all_diffs = all_eig.x[:eig_cnt, :][fidx, :] -\
-                    factors[fidx][:, None] * norm_x[None, :]
-        if np.where(np.sum(np.abs(all_diffs)) < tol * x.shape[0])[0].shape[0]:
-            return eig_cnt
-
-    for j in range(len(good_x)):
-        all_eig.lbd[eig_cnt+j] = norm_lbd
-        all_eig.x[eig_cnt+j] = good_x[j]
-        all_eig.is_self_conj[eig_cnt+j] = is_self_conj
-        all_eig.is_real[eig_cnt+j] = is_real
-
-    return eig_cnt + len(good_x)
+    return eig_cnt + nct
 
 
 def find_all_unitary_eigenpair(
-        all_eig, eig_cnt, A, max_itr, max_test=int(1e6), tol=1e-10):
+        all_eig, eig_cnt, A, max_itr, max_test=int(1e5), tol=1e-6, disc=1e-3):
     """ output is the table of results
      2n*+2 columns: lbd, is self conjugate, x_real, x_imag
     This is the raw version, since the output vector x
@@ -623,7 +624,7 @@ def find_all_unitary_eigenpair(
     if all_eig is None:
         all_eig = SimpleNamespace(
             lbd=np.full((n_eig), np.nan, dtype=float),
-            x=np.full((n_eig, n), np.nan, dtype=np.complex),
+            x=np.full((n_eig, n), np.nan, dtype=complex),
             is_self_conj=zeros((n_eig), dtype=bool),
             is_real=zeros((n_eig), dtype=bool))
         eig_cnt = 0
@@ -658,11 +659,10 @@ def find_all_unitary_eigenpair(
                 continue
         old_eig = eig_cnt
         if converge and (err < tol):
-            eig_cnt = _insert_eigen(all_eig, x, lbd, eig_cnt, m, tol)
+            eig_cnt = _insert_eigen(all_eig, x, lbd, eig_cnt, m, tol, disc)
         if eig_cnt == n_eig:
             break
-        elif (eig_cnt > old_eig) and (eig_cnt % 10 == 0):
+        elif (eig_cnt > old_eig) and (eig_cnt % 5 == 0):
             print('Found %d eigenpairs' % eig_cnt)
+    print('Found %d eigenpairs' % eig_cnt)
     return all_eig, jj
-
-
