@@ -209,6 +209,10 @@ def insert_eigen(all_eig, x, lbd, eig_cnt, m, d, tol, disc):
         good_x = [norm_x, norm_x.conjugate()]
     nct = 0
     for xx in good_x:
+        if eig_cnt+nct >= all_eig.lbd.shape[0]:
+            print("more values found than expected. Likely having a degenerate zero")
+            break
+        
         factors = all_eig.x[:eig_cnt+nct, :] @ xx.conjugate()
         fidx = np.where(np.abs(factors ** (m-d) - 1) < disc)[0]
         if fidx.shape[0] == 0:
