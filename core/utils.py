@@ -1,6 +1,15 @@
 import numpy as np
 
 
+def tv_mode_product(T, x, modes) -> np.ndarray:
+    """ Evaluating T subsituting x for the last modes times indices
+    """
+    v = T
+    for i in range(modes):
+        v = np.tensordot(v, x, axes=1)
+    return v
+    
+
 def gen_random_anti_symmetric(k):
     p_raw = np.random.randint(1, 10, (k * (k-1)) // 2)
     p = np.zeros((k, k))
@@ -128,6 +137,15 @@ def vech_embedding_tensor(p):
     return ret    
 
 
+def generate_polynomial_tensor(k, m):
+    """Tensor representing a vector polynomial function
+    """
+    A = np.full(tuple(m*[k]), np.nan)
+    for i in range(k):        
+        A[i, None] = generate_symmetric_tensor(k, m-1)
+    return A
+
+
 def generate_symmetric_tensor(k, m):
     """Generating symmetric tensor size k,m
     """
@@ -177,8 +195,8 @@ def generate_symmetric_tensor_from_poly(X, expr):
     
     k = X.shape[0]
 
-    expr_list = sp.Poly(expr).coeffs()
-    expr_monom = sp.Poly(expr).monoms()
+    expr_list = sp.Poly(expr, list(X)).coeffs()
+    expr_monom = sp.Poly(expr, list(X)).monoms()
     
     m = sum(expr_monom[0])
     tot_terms = sum(X)**m

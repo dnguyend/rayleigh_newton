@@ -1,3 +1,6 @@
+"""UZpairs with unitary constraint and B = I
+"""
+
 import numpy as np
 import sys
 import scipy.linalg
@@ -5,6 +8,8 @@ from numpy import concatenate, tensordot, eye, zeros, zeros_like,\
     power, sqrt, exp, pi
 
 from numpy.linalg import solve, inv, norm
+from .utils import tv_mode_product
+
 
 if sys.version_info[0] < 3:
     class SimpleNamespace:
@@ -20,13 +25,6 @@ if sys.version_info[0] < 3:
                 return self.__dict__ == other.__dict__
 else:
     from types import SimpleNamespace
-
-
-def symmetric_tv_mode_product(T, x, modes) -> np.ndarray:
-    v = T
-    for i in range(modes):
-        v = tensordot(v, x, axes=1)
-    return v
 
 
 def orthogonal_newton_correction_method(
@@ -74,13 +72,13 @@ def orthogonal_newton_correction_method(
         x_init = x_init/norm(x_init)
 
     # init lambda_(k) and x_(k)
-    lbd = symmetric_tv_mode_product(T, x_init, m)
+    lbd = tv_mode_product(T, x_init, m)
     x_k = x_init.copy()
     ctr = 0
 
     while (R > delta) and (ctr < max_itr):
         # compute T(I,I,x_k,...,x_k), T(I,x_k,...,x_k) and g(x_k)
-        T_x_m_2 = symmetric_tv_mode_product(T, x_k, m-2)
+        T_x_m_2 = tv_mode_product(T, x_k, m-2)
         T_x_m_1 = T_x_m_2 @ x_k
         g = -lbd * x_k + T_x_m_1
 
@@ -97,7 +95,7 @@ def orthogonal_newton_correction_method(
         #  update residual and lbd
         R = norm(x_k-x_k_n)
         x_k = x_k_n
-        lbd = symmetric_tv_mode_product(T, x_k, m)
+        lbd = tv_mode_product(T, x_k, m)
         # print("ctr=%d lbd=%f" % (ctr, lbd))
         ctr += 1
 
@@ -114,6 +112,20 @@ def get_xperp(x):
     return np.concatenate(
         [-Q*x[1:].reshape(1, -1),
          np.eye(x.shape[0]-1)-1/(1+P)*x[1:][:, None]@x[1:][None, :]])
+
+
+def householder(x):
+    """ compute the orthogonal complement of x
+    """
+    n = x.shape[0]
+    if x[0] < 0:
+        al = 1
+    else:
+        al = -1
+    In = np.eye(n)
+    v = x - al*In[:, 0]
+    v = v/norm(v)
+    return In[:, 1:] - 2*v[:, None]@v[None, :]@In[:, 1:]
 
 
 def newton_form_rayleigh_chebyshev(
@@ -136,10 +148,10 @@ def newton_form_rayleigh_chebyshev(
 
     x_k = x_init.copy()
     if do_chebyshev:
-        T_x_m_3 = symmetric_tv_mode_product(T, x_k, m-3)
+        T_x_m_3 = tv_mode_product(T, x_k, m-3)
         T_x_m_2 = np.tensordot(T_x_m_3, x_k, axes=1)
     else:
-        T_x_m_2 = symmetric_tv_mode_product(T, x_k, m-2)
+        T_x_m_2 = tv_mode_product(T, x_k, m-2)
     T_x_m_1 = T_x_m_2 @ x_k
     lbd = x_k.T @ T_x_m_1
     ctr = 0
@@ -147,7 +159,8 @@ def newton_form_rayleigh_chebyshev(
     while (R > delta) and (ctr < max_itr):
         # compute T(I,I,x_k,...,x_k), T(I,x_k,...,x_k) and g(x_k)
 
-        Q = get_xperp(x_k)
+        # Q = get_xperp(x_k)
+        Q = householder(x_k)
 
         # compute Hessian H(x_k)
         H = (m-1)*T_x_m_2-lbd*np.eye(n)
@@ -169,16 +182,16 @@ def newton_form_rayleigh_chebyshev(
         R = norm(x_k-x_k_n)
         x_k = x_k_n
         if do_chebyshev:
-            T_x_m_3 = symmetric_tv_mode_product(T, x_k, m-3)
+            T_x_m_3 = tv_mode_product(T, x_k, m-3)
             T_x_m_2 = np.tensordot(T_x_m_3, x_k, axes=1)
         else:
-            T_x_m_2 = symmetric_tv_mode_product(T, x_k, m-2)
+            T_x_m_2 = tv_mode_product(T, x_k, m-2)
         T_x_m_1 = T_x_m_2 @ x_k
 
         lbd = np.sum(x_k * T_x_m_1)
         ctr += 1
     x = x_k
-    err = norm(symmetric_tv_mode_product(
+    err = norm(tv_mode_product(
         T, x, m-1) - lbd * x)
     if ctr < max_itr:
         converge = True
@@ -203,13 +216,13 @@ def schur_form_rayleigh(
         x_init = x_init/norm(x_init)
 
     # init lambda_(k) and x_(k)
-    lbd = symmetric_tv_mode_product(T, x_init, m)
+    lbd = tv_mode_product(T, x_init, m)
     x_k = x_init.copy()
     ctr = 0
 
     while (R > delta) and (ctr < max_itr):
         # compute T(I,I,x_k,...,x_k), T(I,x_k,...,x_k) and g(x_k)
-        T_x_m_2 = symmetric_tv_mode_product(T, x_k, m-2)
+        T_x_m_2 = tv_mode_product(T, x_k, m-2)
         T_x_m_1 = T_x_m_2 @ x_k
         rhs = concatenate(
             [x_k.reshape(-1, 1), T_x_m_1.reshape(-1, 1)], axis=1)
@@ -226,7 +239,7 @@ def schur_form_rayleigh(
         #  update residual and lbd
         R = norm(x_k-x_k_n)
         x_k = x_k_n
-        lbd = symmetric_tv_mode_product(T, x_k, m)
+        lbd = tv_mode_product(T, x_k, m)
         # print('ctr=%d lbd=%f' % (ctr, lbd))
         ctr += 1
     x = x_k
@@ -256,10 +269,10 @@ def schur_form_rayleigh_chebyshev(
 
     x_k = x_init.copy()
     if do_chebyshev:
-        T_x_m_3 = symmetric_tv_mode_product(T, x_k, m-3)
+        T_x_m_3 = tv_mode_product(T, x_k, m-3)
         T_x_m_2 = tensordot(T_x_m_3, x_k, axes=1)
     else:
-        T_x_m_2 = symmetric_tv_mode_product(T, x_k, m-2)
+        T_x_m_2 = tv_mode_product(T, x_k, m-2)
     T_x_m_1 = T_x_m_2 @ x_k
     lbd = x_k.T @ T_x_m_1
     ctr = 0
@@ -295,17 +308,17 @@ def schur_form_rayleigh_chebyshev(
         R = norm(x_k-x_k_n)
         x_k = x_k_n
         if do_chebyshev:
-            T_x_m_3 = symmetric_tv_mode_product(T, x_k, m-3)
+            T_x_m_3 = tv_mode_product(T, x_k, m-3)
             T_x_m_2 = tensordot(T_x_m_3, x_k, axes=1)
         else:
-            T_x_m_2 = symmetric_tv_mode_product(T, x_k, m-2)
+            T_x_m_2 = tv_mode_product(T, x_k, m-2)
         T_x_m_1 = T_x_m_2 @ x_k
 
         lbd = x_k.T @ T_x_m_1
         # print('ctr=%d lbd=%f' % (ctr, lbd))
         ctr += 1
     x = x_k
-    err = norm(symmetric_tv_mode_product(
+    err = norm(tv_mode_product(
         T, x, m-1) - lbd * x)
 
     if ctr < max_itr:
@@ -335,11 +348,11 @@ def schur_form_rayleigh_chebyshev_unitary(
     # init lambda_(k) and x_(k)
     x_k = x_init.copy()
     if do_chebyshev:
-        T_x_m_3 = symmetric_tv_mode_product(T, x_k, m-3)
+        T_x_m_3 = tv_mode_product(T, x_k, m-3)
         T_x_m_2 = tensordot(T_x_m_3, x_k, axes=1)
 
     else:
-        T_x_m_2 = symmetric_tv_mode_product(T, x_k, m-2)
+        T_x_m_2 = tv_mode_product(T, x_k, m-2)
     T_x_m_1 = T_x_m_2 @ x_k
 
     lbd = (x_k.conjugate().T @ T_x_m_1).real
@@ -379,17 +392,17 @@ def schur_form_rayleigh_chebyshev_unitary(
         R = norm(x_k-x_k_n)
         x_k = x_k_n
         if do_chebyshev:
-            T_x_m_3 = symmetric_tv_mode_product(T, x_k, m-3)
+            T_x_m_3 = tv_mode_product(T, x_k, m-3)
             T_x_m_2 = np.tensordot(T_x_m_3, x_k, axes=1)
         else:
-            T_x_m_2 = symmetric_tv_mode_product(T, x_k, m-2)
+            T_x_m_2 = tv_mode_product(T, x_k, m-2)
         T_x_m_1 = T_x_m_2 @ x_k
 
         lbd = (x_k.conjugate().T @ T_x_m_1).real
         # print('ctr=%d lbd=%f' % (ctr, lbd))
         ctr += 1
     x = x_k
-    err = norm(symmetric_tv_mode_product(
+    err = norm(tv_mode_product(
         T, x, m-1) - lbd * x)
     if ctr < max_itr:
         converge = True
@@ -421,10 +434,10 @@ def _schur_form_rayleigh_chebyshev_linear(
     x_k = x_init / (u.T @ x_init)
     ctr = 0
     if do_chebyshev:
-        T_x_m_3 = symmetric_tv_mode_product(T, x_k, m-3)
+        T_x_m_3 = tv_mode_product(T, x_k, m-3)
         T_x_m_2 = tensordot(T_x_m_3, x_k, axes=1)
     else:
-        T_x_m_2 = symmetric_tv_mode_product(T, x_k, m-2)
+        T_x_m_2 = tv_mode_product(T, x_k, m-2)
     T_x_m_1 = T_x_m_2 @ x_k
     x_t_x = x_k.T @ x_k
     x_t_x_m_1_2 = power(x_t_x, .5*(m-1))
@@ -459,10 +472,10 @@ def _schur_form_rayleigh_chebyshev_linear(
         R = norm(x_k-x_k_n)
         x_k = x_k_n
         if do_chebyshev:
-            T_x_m_3 = symmetric_tv_mode_product(T, x_k, m-3)
+            T_x_m_3 = tv_mode_product(T, x_k, m-3)
             T_x_m_2 = tensordot(T_x_m_3, x_k, axes=1)
         else:
-            T_x_m_2 = symmetric_tv_mode_product(T, x_k, m-2)
+            T_x_m_2 = tv_mode_product(T, x_k, m-2)
         T_x_m_1 = T_x_m_2 @ x_k
         x_t_x = x_k.T @ x_k
         x_t_x_m_1_2 = power(x_t_x, .5*(m-1))
@@ -498,7 +511,7 @@ def schur_form_rayleigh_linear(
     # init lambda_(k) and x_(k)
     x_k = x_init / (u.T @ x_init)
     ctr = 0
-    T_x_m_2 = symmetric_tv_mode_product(T, x_k, m-2)
+    T_x_m_2 = tv_mode_product(T, x_k, m-2)
     T_x_m_1 = T_x_m_2 @ x_k
     x_t_x = x_k.T @ x_k
     x_t_x_m_2_2 = power(x_t_x, .5*(m-2))
@@ -523,7 +536,7 @@ def schur_form_rayleigh_linear(
         #  update residual and lbd
         R = norm(x_k-x_k_n)
         x_k = x_k_n
-        T_x_m_2 = symmetric_tv_mode_product(T, x_k, m-2)
+        T_x_m_2 = tv_mode_product(T, x_k, m-2)
         T_x_m_1 = T_x_m_2 @ x_k
         x_t_x = x_k.T @ x_k
         x_t_x_m_2_2 = power(x_t_x, .5*(m-2))
@@ -537,7 +550,7 @@ def schur_form_rayleigh_linear(
     return x, lbd, ctr, converge
 
 
-def complex_eigen_cnt(n, m):
+def complex_eigen_cnt(m, n):
     if m == 2:
         return n
     return (power(m-1, n)-1) // (m-2)
@@ -581,7 +594,7 @@ def normalize_real_positive(lbd, x, m, tol):
         return is_self_conj, False, lbd, x
 
 
-def _insert_eigen(all_eig, x, lbd, eig_cnt, m, tol, disc):
+def insert_eigen(all_eig, x, lbd, eig_cnt, m, tol, disc):
     """
     force eigen values to be positive if possible
     if x is not similar to a vector in all_eig.x
@@ -620,7 +633,7 @@ def find_all_unitary_eigenpair(
     """
     n = A.shape[0]
     m = len(A.shape)
-    n_eig = complex_eigen_cnt(n, m)
+    n_eig = complex_eigen_cnt(m, n)
     if all_eig is None:
         all_eig = SimpleNamespace(
             lbd=np.full((n_eig), np.nan, dtype=float),
@@ -659,10 +672,29 @@ def find_all_unitary_eigenpair(
                 continue
         old_eig = eig_cnt
         if converge and (err < tol):
-            eig_cnt = _insert_eigen(all_eig, x, lbd, eig_cnt, m, tol, disc)
+            eig_cnt = insert_eigen(all_eig, x, lbd, eig_cnt, m, tol, disc)
         if eig_cnt == n_eig:
             break
         elif (eig_cnt > old_eig) and (eig_cnt % 5 == 0):
             print('Found %d eigenpairs' % eig_cnt)
     print('Found %d eigenpairs' % eig_cnt)
     return all_eig, jj
+
+
+def time_find_all_unitary(A, tol, disc, max_itr, max_test=1e6):
+    # find from begining
+    from time import process_time
+    t_start = process_time()
+    all_eig, n_runs = find_all_unitary_eigenpair(
+        all_eig=None, eig_cnt=None, A=A, max_itr=max_itr, max_test=10, tol=tol)
+
+    # continue finding more pairs
+    all_eig, n_runs = find_all_unitary_eigenpair(
+        all_eig, eig_cnt=None, A=A, max_itr=max_itr,
+        max_test=int(max_test), tol=tol, disc=disc)
+
+    t_end = process_time()
+    tot_time = t_end - t_start
+    print('tot time %f avg=%f' % (tot_time, tot_time / all_eig.x.shape[0]))
+
+    return A, all_eig
