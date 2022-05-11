@@ -52,8 +52,8 @@ def schur_form_B_tensor_rayleigh_linear(
 
         # fix eigenvector
         y = lhs[:, 0] * (
-            np.sum((x_k.conjugate() * lhs[:, 1])) /
-            np.sum((x_k.conjugate() * lhs[:, 0]))) - lhs[:, 1]
+            np.sum((C * lhs[:, 1])) /
+            np.sum((C * lhs[:, 0]))) - lhs[:, 1]
         # print('%f %f %f' % (norm(lhs[:, 0]), norm(lhs[:, 1]), norm(np.sum(x_k.conjugate()*y))))
         x_k_n = (x_k + y) / np.sum(C*(x_k + y))
 
